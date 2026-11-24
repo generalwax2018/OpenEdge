@@ -1,8 +1,19 @@
-# OpenEdge – Self-Hosted Cloudflare-style Edge
+# OpenEdge
 
-**OpenEdge** is an open-source, self-hosted edge stack for small and medium businesses that want Cloudflare-like capabilities (reverse proxy, automatic HTTPS, WAF, rate limiting, threat intelligence, bot challenges) running in their own cloud account.
+**Self-hosted edge for teams that want control and data sovereignty.**
 
-It works as a single node or as multiple instances behind a load balancer with shared Redis for certificates and rate-limit state.
+OpenEdge gives small and medium businesses a production-ready reverse proxy, automatic HTTPS, WAF, rate limiting, and threat intelligence that runs entirely in their own cloud account. Traffic never leaves their infrastructure for inspection.
+
+It deploys as a single node or as multiple instances behind a load balancer, with shared state for certificates and rate limits.
+
+## Why OpenEdge
+
+| Pillar | What you get |
+|--------|--------------|
+| **Control & data sovereignty** | Everything runs in your Azure, AWS, or private cloud. No third-party edge sees your traffic. |
+| **Reverse proxy + automatic HTTPS** | Caddy with automatic Let's Encrypt (HTTP-01 or DNS-01). Modern TLS defaults. |
+| **WAF + rate limiting + threat intel** | Coraza + OWASP CRS, multi-zone rate limits (shared via Redis), CrowdSec IP reputation. |
+| **Multi-instance in your cloud** | Shared Redis for certificates and rate limits. Load-balancer ready. Health checks included. |
 
 ## Architecture
 
@@ -10,20 +21,17 @@ It works as a single node or as multiple instances behind a load balancer with s
 Internet
    │
    ▼
-Load Balancer (optional)
+Your Load Balancer (optional)
    │
-   ├── Caddy + Coraza WAF + CrowdSec + Rate limiting
-   ├── Caddy + Coraza WAF + CrowdSec + Rate limiting
+   ├── OpenEdge node (Caddy + WAF + CrowdSec + rate limits)
+   ├── OpenEdge node
    └── ...
          │
          ▼
-   Optional Anubis bot challenge
+   Shared Redis (certificates + rate-limit state)
          │
          ▼
-   Shared Redis (certificates + rate limits)
-         │
-         ▼
-   Your applications
+   Your applications (never leave your network for inspection)
 ```
 
 ## Quick Start
@@ -32,40 +40,35 @@ Load Balancer (optional)
 git clone https://github.com/generalwax2018/OpenEdge.git
 cd OpenEdge
 cp .env.example .env
-# Edit .env
+# Edit .env — set DOMAIN, ACME_EMAIL, and strong keys
 docker compose up -d --build
 ```
 
-With optional bot challenge:
-
-```bash
-docker compose --profile bot-challenge up -d --build
-# Set UPSTREAM=http://anubis:3000 in .env
-```
+Point your domain at the instance (or load balancer). Certificates are issued automatically.
 
 ## Documentation
 
+- [Core capabilities](docs/capabilities.md)
+- [Production checklist](docs/production-checklist.md)
+- [Multi-instance](docs/multi-instance.md)
 - [Azure](docs/deploy-azure.md)
 - [AWS](docs/deploy-aws.md)
-- [Multi-instance](docs/multi-instance.md)
 - [DNS-01 challenges](docs/dns-challenge.md)
-- [Security features](docs/security.md)
-- [Production checklist](docs/production-checklist.md)
+- [Security](docs/security.md)
 
 ## Features
 
 | Feature | Status |
 |---------|--------|
-| Automatic HTTPS | Yes |
-| DNS-01 challenges | Yes |
+| Automatic HTTPS (HTTP-01 & DNS-01) | Yes |
 | Reverse proxy | Yes |
-| WAF (OWASP CRS) | Yes |
-| Threat intel (CrowdSec) | Yes |
-| Multi-zone rate limiting | Yes |
-| Bot challenge (Anubis) | Optional |
-| Multi-instance + shared certs | Yes |
-| Security headers | Yes |
-| Health endpoint | Yes |
+| WAF (OWASP CRS) with body limits | Yes |
+| Multi-zone rate limiting (Redis-backed) | Yes |
+| Threat intelligence (CrowdSec) | Yes |
+| Multi-instance + shared certificates | Yes |
+| Security headers & attack path blocking | Yes |
+| Health endpoint for load balancers | Yes |
+| Optional bot challenge (Anubis) | Yes |
 
 ## License
 

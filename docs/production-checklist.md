@@ -1,35 +1,48 @@
-# Production Checklist for SMBs
+# Production Checklist
 
-Use this when deploying OpenEdge in your own Azure or AWS account.
+Use this before putting OpenEdge in front of real traffic.
 
-## Must-have
+## Sovereignty & control
 
-- [ ] Domain pointed at the load balancer (or single node)
+- [ ] Stack runs entirely in your Azure / AWS / private cloud account
+- [ ] Redis is on a private network only (not publicly reachable)
+- [ ] CrowdSec LAPI is on a private network (or properly firewalled)
+- [ ] Logs are retained in your environment or shipped to your SIEM
+- [ ] Strong, unique values set for `CROWDSEC_BOUNCER_KEY` and `REDIS_PASSWORD`
+
+## Reverse proxy & HTTPS
+
+- [ ] `DOMAIN` and `ACME_EMAIL` set correctly
+- [ ] Domain points at the load balancer (or single node)
 - [ ] Ports 80 and 443 open and forwarded
-- [ ] Strong values for `CROWDSEC_BOUNCER_KEY` and `REDIS_PASSWORD`
-- [ ] Redis not exposed to the public internet
-- [ ] WAF in DetectionOnly mode until false positives are tuned
-- [ ] Let's Encrypt email set (`ACME_EMAIL`)
+- [ ] DNS-01 enabled if running multi-instance or using wildcards (recommended)
+- [ ] `admin off` uncommented in the Caddyfile for production
 
-## Multi-instance specific
+## WAF, rate limiting & threat intel
+
+- [ ] WAF starts in DetectionOnly; false positives reviewed before switching to `On`
+- [ ] Rate-limit zones reviewed for your traffic patterns
+- [ ] CrowdSec bouncer key registered and working
+- [ ] Common attack paths are blocked (default Caddyfile does this)
+- [ ] Request body limits appropriate for your upload needs
+
+## Multi-instance
 
 - [ ] Shared Redis reachable by all nodes on private network
-- [ ] Same `REDIS_ADDR` and `REDIS_PASSWORD` on every node
+- [ ] Identical `REDIS_ADDR`, `REDIS_PASSWORD`, and Caddyfile on every node
 - [ ] Load balancer health checks configured (port 8080 or TCP 80/443)
-- [ ] All nodes have identical Caddyfile and environment
+- [ ] DNS-01 preferred over HTTP-01 behind the load balancer
+- [ ] Process documented for adding/removing nodes
 
-## Recommended
+## Operational
 
-- [ ] Central CrowdSec or CrowdSec on each node
-- [ ] Log shipping (or at least log retention)
-- [ ] Redis persistence or backups (optional — re-issuance works but burns rate limits)
-- [ ] Resource limits / autoscaling on the nodes
-- [ ] Monitoring / alerting on node health and 5xx rates
-- [ ] Documented process for adding/removing nodes
+- [ ] Resource limits or autoscaling configured on nodes
+- [ ] Monitoring/alerting on node health and 5xx rates
+- [ ] Redis persistence or backup strategy decided (re-issuance works but consumes rate limits)
+- [ ] Update process for the custom Caddy image documented
 
-## Optional later
+## Optional
 
-- [ ] DNS-01 challenges (more reliable than HTTP-01 behind some load balancers)
-- [ ] Central logging dashboard
-- [ ] Bot challenge integration
-- [ ] Simple status / admin UI
+- [ ] Central CrowdSec LAPI for multi-node consistency
+- [ ] Anubis bot challenge enabled if bot traffic is high
+- [ ] Log shipping to central system
