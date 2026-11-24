@@ -1,4 +1,4 @@
-# Custom Caddy with Coraza WAF + CrowdSec + rate limiting + Redis storage
+# Custom Caddy with Coraza WAF + CrowdSec + rate limiting + Redis storage + DNS providers
 # Build with: docker compose build caddy
 
 ARG CADDY_VERSION=2.10
@@ -10,13 +10,15 @@ RUN xcaddy build \
 	--with github.com/hslatman/caddy-crowdsec-bouncer/http \
 	--with github.com/hslatman/caddy-crowdsec-bouncer/appsec \
 	--with github.com/mholt/caddy-ratelimit \
-	--with github.com/pberkel/caddy-storage-redis
+	--with github.com/pberkel/caddy-storage-redis \
+	--with github.com/caddy-dns/cloudflare \
+	--with github.com/caddy-dns/route53 \
+	--with github.com/caddy-dns/azure
 
 FROM caddy:${CADDY_VERSION}-alpine
 
 COPY --from=builder /usr/bin/caddy /usr/bin/caddy
 
-# Create log directory
 RUN mkdir -p /var/log/caddy && chown -R caddy:caddy /var/log/caddy
 
 USER caddy
