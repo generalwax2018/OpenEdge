@@ -18,6 +18,11 @@
 		ticker_interval 15s
 	}
 
+	# Header size limit (mitigates header bombs)
+	servers {
+		max_header_size 32KiB
+	}
+
 	order coraza_waf first
 	order crowdsec_http before reverse_proxy
 	order rate_limit before reverse_proxy
@@ -26,6 +31,11 @@
 }
 
 {$DOMAIN} {
+	# Explicit modern TLS (Caddy defaults are already good; this makes it clear)
+	tls {
+		protocols tls1.2 tls1.3
+	}
+
 	# Optional DNS-01 (see docs/dns-challenge.md)
 	# tls {
 	# 	dns cloudflare {$CF_API_TOKEN}
@@ -42,19 +52,23 @@
 		-Server
 	}
 
-	# Stricter multi-zone rate limiting
+	# Block common attack / scanner paths early
+	@badpaths path /wp-admin* /wp-login* /xmlrpc.php /.env /.git* /phpmyadmin* /admin.php /config.php /backup* /shell* /cgi-bin*
+	handle @badpaths {
+		respond "Forbidden" 403
+	}
+
+	# Multi-zone rate limiting
 	rate_limit {
 		distributed {
 			read_interval 5s
 			write_interval 5s
 		}
-		# General traffic
 		zone general {
 			key {remote_host}
 			events 120
 			window 1m
 		}
-		# Sensitive paths (login, admin, api)
 		zone sensitive {
 			match {
 				path /login* /admin* /api/auth* /wp-login* /xmlrpc.php
@@ -65,7 +79,7 @@
 		}
 	}
 
-	# Coraza WAF (DetectionOnly by default)
+	# Coraza WAF with body limits (prevents memory exhaustion)
 	coraza_waf {
 		load_owasp_crs
 		directives `
@@ -74,14 +88,18 @@
 			Include @owasp_crs/*.conf
 			SecRuleEngine DetectionOnly
 			# SecRuleEngine On
+			SecRequestBodyAccess On
+			SecRequestBodyLimit 10485760
+			SecRequestBodyNoFilesLimit 131072
+			SecRequestBodyLimitAction Reject
+			SecResponseBodyAccess Off
 		`
 	}
 
 	# CrowdSec IP blocking
 	crowdsec
 
-	# Optional: route through Anubis bot challenge first
-	# Set UPSTREAM to http://anubis:3000 and enable the anubis service
+	# Reverse proxy to upstream
 	reverse_proxy {$UPSTREAM} {
 		header_up X-Real-IP {remote_host}
 		header_up X-Forwarded-For {remote_host}
