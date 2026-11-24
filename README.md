@@ -1,6 +1,6 @@
 # OpenEdge – Self-Hosted Cloudflare-style Edge
 
-**OpenEdge** is an open-source, self-hosted edge stack for small and medium businesses that want Cloudflare-like capabilities (reverse proxy, automatic HTTPS, WAF, rate limiting, threat intelligence) running in their own cloud account.
+**OpenEdge** is an open-source, self-hosted edge stack for small and medium businesses that want Cloudflare-like capabilities (reverse proxy, automatic HTTPS, WAF, rate limiting, threat intelligence, bot challenges) running in their own cloud account.
 
 It works as a single node or as multiple instances behind a load balancer with shared Redis for certificates and rate-limit state.
 
@@ -17,7 +17,10 @@ Load Balancer (optional)
    └── ...
          │
          ▼
-   Shared Redis (certificates + rate-limit state)
+   Optional Anubis bot challenge
+         │
+         ▼
+   Shared Redis (certificates + rate limits)
          │
          ▼
    Your applications
@@ -33,19 +36,20 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-For multi-instance testing:
+With optional bot challenge:
 
 ```bash
-docker compose -f docker-compose.multi.yml up -d --build
+docker compose --profile bot-challenge up -d --build
+# Set UPSTREAM=http://anubis:3000 in .env
 ```
 
-## Cloud deployment & features
+## Documentation
 
 - [Azure](docs/deploy-azure.md)
 - [AWS](docs/deploy-aws.md)
 - [Multi-instance](docs/multi-instance.md)
 - [DNS-01 challenges](docs/dns-challenge.md)
-- [Security notes](docs/security.md)
+- [Security features](docs/security.md)
 - [Production checklist](docs/production-checklist.md)
 
 ## Features
@@ -53,12 +57,13 @@ docker compose -f docker-compose.multi.yml up -d --build
 | Feature | Status |
 |---------|--------|
 | Automatic HTTPS | Yes |
-| DNS-01 challenges (Cloudflare, Route53, Azure) | Yes |
+| DNS-01 challenges | Yes |
 | Reverse proxy | Yes |
 | WAF (OWASP CRS) | Yes |
 | Threat intel (CrowdSec) | Yes |
-| Rate limiting | Yes (shared via Redis) |
-| Multi-instance + shared certificates | Yes |
+| Multi-zone rate limiting | Yes |
+| Bot challenge (Anubis) | Optional |
+| Multi-instance + shared certs | Yes |
 | Security headers | Yes |
 | Health endpoint | Yes |
 

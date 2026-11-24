@@ -12,9 +12,11 @@ services:
     environment:
       - ACME_EMAIL=${ACME_EMAIL:-admin@example.com}
       - CROWDSEC_BOUNCER_KEY=${CROWDSEC_BOUNCER_KEY:-changeme}
+      - CROWDSEC_LAPI_URL=${CROWDSEC_LAPI_URL:-http://crowdsec:8080}
       - DOMAIN=${DOMAIN:-localhost}
       - UPSTREAM=${UPSTREAM:-http://whoami:80}
       - REDIS_ADDR=${REDIS_ADDR:-redis:6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -33,7 +35,7 @@ services:
     image: redis:7-alpine
     container_name: openedge-redis
     restart: unless-stopped
-    command: redis-server --save "" --appendonly no --maxmemory 128mb --maxmemory-policy allkeys-lru
+    command: redis-server --save "" --appendonly no --maxmemory 128mb --maxmemory-policy allkeys-lru ${REDIS_PASSWORD:+--requirepass $REDIS_PASSWORD}
     networks:
       - openedge
     security_opt:
@@ -45,12 +47,28 @@ services:
     restart: unless-stopped
     environment:
       - GID=1000
-      - COLLECTIONS=crowdsecurity/caddy crowdsecurity/http-cve crowdsecurity/whitelist-good-actors
+      - COLLECTIONS=crowdsecurity/caddy crowdsecurity/http-cve crowdsecurity/whitelist-good-actors crowdsecurity/appsec-generic-rules
       - BOUNCER_KEY_caddy=${CROWDSEC_BOUNCER_KEY:-changeme}
     volumes:
       - crowdsec_db:/var/lib/crowdsec/data
       - ./crowdsec/acquis.yaml:/etc/crowdsec/acquis.yaml:ro
       - caddy_logs:/var/log/caddy:ro
+    networks:
+      - openedge
+    security_opt:
+      - no-new-privileges:true
+
+  # Optional bot challenge (enable by setting UPSTREAM=http://anubis:3000)
+  anubis:
+    image: ghcr.io/techarohq/anubis:latest
+    container_name: openedge-anubis
+    restart: unless-stopped
+    profiles: ["bot-challenge"]
+    environment:
+      - BIND=:3000
+      - TARGET=${ANUBIS_TARGET:-http://whoami:80}
+      - DIFFICULTY=${ANUBIS_DIFFICULTY:-4}
+      - SERVE_ROBOTS_TXT=true
     networks:
       - openedge
     security_opt:

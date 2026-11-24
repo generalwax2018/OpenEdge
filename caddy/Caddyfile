@@ -1,5 +1,4 @@
-# OpenEdge Caddyfile — multi-instance + DNS challenge ready
-# Shared Redis storage handles certificates and rate-limit state
+# OpenEdge Caddyfile — multi-instance + security hardened
 {
 	email {$ACME_EMAIL}
 
@@ -12,46 +11,24 @@
 		timeout 5
 	}
 
-	# CrowdSec bouncer
+	# CrowdSec bouncer (local or central LAPI)
 	crowdsec {
-		api_url http://crowdsec:8080
+		api_url {$CROWDSEC_LAPI_URL:http://crowdsec:8080}
 		api_key {$CROWDSEC_BOUNCER_KEY}
 		ticker_interval 15s
 	}
 
-	# Order matters
 	order coraza_waf first
 	order crowdsec_http before reverse_proxy
 	order rate_limit before reverse_proxy
 
-	# Uncomment to disable admin API in production
-	# admin off
+	# admin off   # uncomment for production
 }
 
-# Default site
 {$DOMAIN} {
-	# Optional DNS-01 challenge (recommended for multi-instance)
-	# Uncomment and set the matching environment variables
-	# See docs/dns-challenge.md
-	#
+	# Optional DNS-01 (see docs/dns-challenge.md)
 	# tls {
 	# 	dns cloudflare {$CF_API_TOKEN}
-	# }
-	# tls {
-	# 	dns route53 {
-	# 		access_key_id {$AWS_ACCESS_KEY_ID}
-	# 		secret_access_key {$AWS_SECRET_ACCESS_KEY}
-	# 		region {$AWS_REGION:us-east-1}
-	# 	}
-	# }
-	# tls {
-	# 	dns azure {
-	# 		subscription_id {$AZURE_SUBSCRIPTION_ID}
-	# 		resource_group_name {$AZURE_RESOURCE_GROUP_NAME}
-	# 		tenant_id {$AZURE_TENANT_ID}
-	# 		client_id {$AZURE_CLIENT_ID}
-	# 		client_secret {$AZURE_CLIENT_SECRET}
-	# 	}
 	# }
 
 	# Security headers
@@ -61,23 +38,34 @@
 		X-Frame-Options DENY
 		Referrer-Policy strict-origin-when-cross-origin
 		Permissions-Policy "geolocation=(), microphone=(), camera=()"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
 		-Server
 	}
 
-	# Distributed rate limiting (shared via Redis)
+	# Stricter multi-zone rate limiting
 	rate_limit {
 		distributed {
 			read_interval 5s
 			write_interval 5s
 		}
-		zone default {
+		# General traffic
+		zone general {
 			key {remote_host}
-			events 100
+			events 120
+			window 1m
+		}
+		# Sensitive paths (login, admin, api)
+		zone sensitive {
+			match {
+				path /login* /admin* /api/auth* /wp-login* /xmlrpc.php
+			}
+			key {remote_host}
+			events 10
 			window 1m
 		}
 	}
 
-	# Coraza WAF (DetectionOnly by default — switch to On after tuning)
+	# Coraza WAF (DetectionOnly by default)
 	coraza_waf {
 		load_owasp_crs
 		directives `
@@ -92,14 +80,15 @@
 	# CrowdSec IP blocking
 	crowdsec
 
-	# Reverse proxy to upstream
+	# Optional: route through Anubis bot challenge first
+	# Set UPSTREAM to http://anubis:3000 and enable the anubis service
 	reverse_proxy {$UPSTREAM} {
 		header_up X-Real-IP {remote_host}
 		header_up X-Forwarded-For {remote_host}
 		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-Host {host}
 	}
 
-	# Access logging
 	log {
 		output file /var/log/caddy/access.log {
 			roll_size 100mb
@@ -109,7 +98,7 @@
 	}
 }
 
-# Health endpoint for load balancer checks
+# Health endpoint
 :8080 {
 	respond "ok" 200
 }
