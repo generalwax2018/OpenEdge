@@ -59,6 +59,12 @@
 		respond "Forbidden" 403
 	}
 
+	# Lightweight bot / scraper User-Agent blocking
+	@badbots header_regexp User-Agent (?i)(bot|crawler|spider|scraper|curl|wget|python-requests|go-http-client|java/|libwww|httpclient|scrapy|headless|phantom|selenium|playwright|puppeteer|axios|httpx)
+	handle @badbots {
+		respond "Forbidden" 403
+	}
+
 	# Multi-zone rate limiting
 	rate_limit {
 		distributed {
