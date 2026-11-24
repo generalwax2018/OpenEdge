@@ -1,0 +1,79 @@
+# Example for multiple Caddy instances sharing one Redis
+# Use with: docker compose -f docker-compose.multi.yml up -d
+# In production, run each Caddy on its own VM/container and point them at a shared Redis
+# (Azure Cache for Redis, ElastiCache, or a dedicated Redis VM).
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: openedge-redis-shared
+    restart: unless-stopped
+    command: redis-server --save "" --appendonly no --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"   # only for local testing; do not expose publicly in production
+    networks:
+      - openedge
+
+  caddy1:
+    build:
+      context: ./caddy
+      dockerfile: Dockerfile
+    container_name: openedge-caddy-1
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+      - "8443:443"
+    environment:
+      - ACME_EMAIL=${ACME_EMAIL:-admin@example.com}
+      - CROWDSEC_BOUNCER_KEY=${CROWDSEC_BOUNCER_KEY:-changeme}
+      - DOMAIN=${DOMAIN:-localhost}
+      - UPSTREAM=${UPSTREAM:-http://whoami:80}
+      - REDIS_ADDR=redis:6379
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy1_data:/data
+      - caddy1_logs:/var/log/caddy
+    networks:
+      - openedge
+    depends_on:
+      - redis
+
+  caddy2:
+    build:
+      context: ./caddy
+      dockerfile: Dockerfile
+    container_name: openedge-caddy-2
+    restart: unless-stopped
+    ports:
+      - "8081:80"
+      - "8444:443"
+    environment:
+      - ACME_EMAIL=${ACME_EMAIL:-admin@example.com}
+      - CROWDSEC_BOUNCER_KEY=${CROWDSEC_BOUNCER_KEY:-changeme}
+      - DOMAIN=${DOMAIN:-localhost}
+      - UPSTREAM=${UPSTREAM:-http://whoami:80}
+      - REDIS_ADDR=redis:6379
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy2_data:/data
+      - caddy2_logs:/var/log/caddy
+    networks:
+      - openedge
+    depends_on:
+      - redis
+
+  whoami:
+    image: traefik/whoami:latest
+    container_name: openedge-whoami
+    networks:
+      - openedge
+
+volumes:
+  caddy1_data:
+  caddy1_logs:
+  caddy2_data:
+  caddy2_logs:
+
+networks:
+  openedge:
+    driver: bridge

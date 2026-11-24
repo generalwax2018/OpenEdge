@@ -1,8 +1,14 @@
-# OpenEdge Caddyfile — single-node production ready
+# OpenEdge Caddyfile — multi-instance ready
 # Global options
 {
 	email {$ACME_EMAIL}
-	# admin off   # uncomment for production if you don't need the admin API
+
+	# Shared storage for distributed rate limiting (Redis)
+	# Set REDIS_ADDR in environment (e.g. redis:6379 or redis.example.com:6379)
+	storage redis {
+		address {$REDIS_ADDR:redis:6379}
+		db 0
+	}
 
 	# CrowdSec bouncer
 	crowdsec {
@@ -17,9 +23,9 @@
 	order rate_limit before reverse_proxy
 }
 
-# Default site (replace {$DOMAIN} or hardcode your domain)
+# Default site
 {$DOMAIN} {
-	# Security headers (Cloudflare-like)
+	# Security headers
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
 		X-Content-Type-Options nosniff
@@ -29,9 +35,13 @@
 		-Server
 	}
 
-	# Rate limiting (per IP) — tune for your traffic
-	# Default: 100 requests / minute per IP. Adjust events/window as needed.
+	# Distributed rate limiting (shared across all instances via Redis)
+	# Default: 100 requests / minute per IP across the whole cluster
 	rate_limit {
+		distributed {
+			read_interval 5s
+			write_interval 5s
+		}
 		zone default {
 			key {remote_host}
 			events 100
@@ -39,8 +49,7 @@
 		}
 	}
 
-	# Coraza WAF with OWASP CRS
-	# Start in DetectionOnly, switch to On after tuning false positives
+	# Coraza WAF (DetectionOnly by default)
 	coraza_waf {
 		load_owasp_crs
 		directives `
@@ -57,13 +66,12 @@
 
 	# Reverse proxy to upstream
 	reverse_proxy {$UPSTREAM} {
-		# Preserve client IP
 		header_up X-Real-IP {remote_host}
 		header_up X-Forwarded-For {remote_host}
 		header_up X-Forwarded-Proto {scheme}
 	}
 
-	# Access logging (CrowdSec reads these)
+	# Access logging
 	log {
 		output file /var/log/caddy/access.log {
 			roll_size 100mb
@@ -72,5 +80,3 @@
 		format json
 	}
 }
-
-# Optional: redirect HTTP to HTTPS is handled automatically by Caddy
