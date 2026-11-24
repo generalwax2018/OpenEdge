@@ -1,10 +1,12 @@
-# OpenEdge – Self-Hosted Cloudflare-style Edge
+# OpenEdge – Self-Hosted Cloudflare-style Edge (Single Node)
 
-**OpenEdge** is an open-source, self-hosted edge stack that gives you Cloudflare-like capabilities (reverse proxy, automatic HTTPS, WAF, rate limiting, threat intelligence, and basic caching) that you can deploy on your own VPS or servers.
+**OpenEdge** is an open-source, self-hosted edge stack that gives you Cloudflare-like capabilities (reverse proxy, automatic HTTPS, WAF, rate limiting, threat intelligence) that you can deploy on a single VPS, Azure VM, or AWS EC2 instance.
 
-It is **not** a drop-in replacement for Cloudflare’s global anycast network and multi-terabit DDoS scrubbing. That requires dozens/hundreds of points of presence. OpenEdge focuses on the 80% of features that matter for most self-hosters, homelabs, small businesses, and security-conscious teams who want full control and data sovereignty.
+It is designed for **small and medium businesses**, homelabs, and teams that want full control and data sovereignty without depending on a third-party edge provider.
 
-## Architecture
+It is **not** a drop-in replacement for Cloudflare’s global anycast network and multi-terabit DDoS scrubbing. OpenEdge focuses on the practical features that matter for single-node deployments.
+
+## Architecture (single node)
 
 ```
 Internet
@@ -14,106 +16,85 @@ Internet
 │  Caddy (reverse proxy)      │  ← Automatic HTTPS (Let's Encrypt)
 │  + Coraza WAF (OWASP CRS)   │  ← SQL injection, XSS, etc.
 │  + CrowdSec bouncer         │  ← Known bad IPs / collaborative intel
-│  + Rate limiting            │
+│  + Rate limiting (Redis)    │  ← Per-IP abuse protection
 └───────────┬──────────────────┘
              │
              ▼
        Your applications
-       (or another reverse proxy)
 ```
-
-Optional future components:
-- Multiple edge nodes + GeoDNS / anycast for true CDN
-- Redis for shared caching / rate-limit state
-- Simple control plane / dashboard
-- AI-assisted bot detection and anomaly scoring (logs → local LLM or rules)
 
 ## Quick Start (Docker Compose)
 
 ### Prerequisites
-- Linux VPS (or local machine for testing) with Docker + Docker Compose
-- A domain name pointed at the server’s public IP (for real HTTPS)
+- Linux server (VPS, Azure VM, or AWS EC2) with Docker + Docker Compose
+- A domain name pointed at the server’s public IP
 - Ports 80 and 443 open
 
 ### Deploy
 
 ```bash
-# Clone or copy this directory
-cd openedge
-
-# Copy and edit environment
+git clone https://github.com/generalwax2018/OpenEdge.git
+cd OpenEdge
 cp .env.example .env
-# Edit .env — set ACME_EMAIL at minimum
-
-# Start the stack
-docker compose up -d
-
-# Watch logs
+# Edit .env — set ACME_EMAIL, DOMAIN, and a strong CROWDSEC_BOUNCER_KEY
+docker compose up -d --build
 docker compose logs -f
 ```
 
 ### First-time notes
-- Caddy will automatically obtain Let’s Encrypt certificates once the domain resolves to this server.
-- Coraza starts in **DetectionOnly** mode by default (logs attacks but does not block). Switch to `On` after tuning false positives.
-- CrowdSec needs a few minutes to populate decisions. You can force a test later.
+- Caddy obtains Let’s Encrypt certificates automatically once the domain resolves.
+- Coraza starts in **DetectionOnly** mode (logs attacks, does not block). Switch to `On` after tuning.
+- Rate limiting is set to 100 requests/minute per IP by default. Edit `caddy/Caddyfile` to change it.
+- CrowdSec needs a few minutes to populate decisions.
 
-### Test the WAF
-Once running, try:
+### Test the WAF / rate limit
 
 ```bash
-# Should be blocked (or logged in DetectionOnly)
+# WAF test (should be logged or blocked depending on mode)
 curl -I "https://yourdomain.com/?id=1' OR '1'='1"
+
+# Rate limit test (run many times quickly)
+for i in {1..120}; do curl -s -o /dev/null -w "%{http_code}\n" https://yourdomain.com/; done
 ```
+
+## Cloud deployment guides
+
+- [Azure (VM + Docker)](docs/deploy-azure.md)
+- [AWS (EC2 + Docker)](docs/deploy-aws.md)
 
 ## Project Structure
 
 ```
 openedge/
-├── docker-compose.yml      # Full stack
+├── docker-compose.yml
 ├── .env.example
 ├── caddy/
-│   ├── Caddyfile           # Reverse proxy + WAF + security config
-│   └── Dockerfile          # Custom Caddy with Coraza + CrowdSec modules
+│   ├── Caddyfile
+│   └── Dockerfile
 ├── crowdsec/
-│   └── acquis.yaml         # Log acquisition config
+│   └── acquis.yaml
 ├── docs/
-│   └── architecture.md
+│   ├── architecture.md
+│   ├── deploy-azure.md
+│   └── deploy-aws.md
 └── README.md
 ```
 
-## Roadmap / Ideas
+## Roadmap (single-node first)
 
-- [ ] Multi-node edge + GeoDNS (PowerDNS or CoreDNS)
-- [ ] Shared Redis cache + rate-limit state
-- [ ] Simple web dashboard for rules, blocked IPs, and analytics
-- [ ] AI bot / scraper detection (local model or CrowdSec + custom scenarios)
-- [ ] Tunnel support (frp / rathole style) for origins behind NAT
-- [ ] Plugin system for custom middleware
-- [ ] Integration with existing tools (BunkerWeb, SafeLine, or Pingora-based edge)
-
-## Existing Mature Alternatives
-
-If you need something production-ready today rather than building:
-
-| Project       | Stars  | Focus                          | Notes                          |
-|---------------|--------|--------------------------------|--------------------------------|
-| SafeLine      | ~23k   | WAF + reverse proxy            | Excellent detection, easy Docker |
-| BunkerWeb     | ~11k   | WAF + full web server          | Nginx-based, great UI, plugins |
-| NetGoat       | ~900   | Explicit CF alternative        | Early alpha, Go-based          |
-| Coraza + Caddy| —      | Modern WAF engine              | Building block we use here     |
+- [x] Automatic HTTPS + reverse proxy
+- [x] WAF (Coraza + OWASP CRS)
+- [x] Threat intelligence (CrowdSec)
+- [x] Rate limiting (Redis-backed)
+- [ ] Simple dashboard / status page
+- [ ] Basic caching options
+- [ ] Bot challenge integration (e.g. Anubis)
+- [ ] Multi-node / GeoDNS (later)
 
 ## License
 
-MIT (or Apache-2.0 — choose what fits). All components used are permissively or copyleft licensed as appropriate.
+MIT
 
 ## Contributing
 
-This is a starter scaffold. Contributions welcome — especially around:
-- Hardening the custom Caddy build
-- Dashboard
-- Multi-edge orchestration
-- AI-powered detection modules
-
----
-
-Built as a practical starting point for people who want to own their edge.
+This is a practical starter for people who want to own their edge. Contributions welcome.

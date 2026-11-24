@@ -1,4 +1,4 @@
-# Custom Caddy with Coraza WAF + CrowdSec bouncer
+# Custom Caddy with Coraza WAF + CrowdSec bouncer + rate limiting
 # Build with: docker compose build caddy
 
 ARG CADDY_VERSION=2.10
@@ -8,7 +8,8 @@ FROM caddy:${CADDY_VERSION}-builder-alpine AS builder
 RUN xcaddy build \
 	--with github.com/corazawaf/coraza-caddy/v2 \
 	--with github.com/hslatman/caddy-crowdsec-bouncer/http \
-	--with github.com/hslatman/caddy-crowdsec-bouncer/appsec
+	--with github.com/hslatman/caddy-crowdsec-bouncer/appsec \
+	--with github.com/mholt/caddy-ratelimit
 
 FROM caddy:${CADDY_VERSION}-alpine
 

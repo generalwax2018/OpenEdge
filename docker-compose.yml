@@ -1,5 +1,5 @@
 services:
-  # Custom Caddy with Coraza WAF + CrowdSec bouncer
+  # Custom Caddy with Coraza WAF + CrowdSec + rate limiting
   caddy:
     build:
       context: ./caddy
@@ -25,8 +25,28 @@ services:
     depends_on:
       - whoami
       - crowdsec
+      - redis
     security_opt:
       - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # Redis for rate-limit state (and future caching)
+  redis:
+    image: redis:7-alpine
+    container_name: openedge-redis
+    restart: unless-stopped
+    command: redis-server --save "" --appendonly no --maxmemory 128mb --maxmemory-policy allkeys-lru
+    networks:
+      - openedge
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 160M
 
   # Collaborative threat intelligence
   crowdsec:
@@ -45,6 +65,10 @@ services:
       - openedge
     security_opt:
       - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 256M
 
   # Sample backend (replace with your real apps)
   whoami:
