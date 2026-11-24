@@ -1,6 +1,6 @@
-# Multi-Instance Deployment (Azure / AWS)
+# Multi-Instance Deployment
 
-OpenEdge supports multiple Caddy instances behind a load balancer. Certificates and rate-limit state are shared via Redis.
+OpenEdge is designed to run as multiple instances behind a load balancer in your own Azure, AWS, or private cloud. Certificates and rate-limit state are shared via Redis so the cluster behaves as one edge.
 
 ## Architecture
 
@@ -8,74 +8,71 @@ OpenEdge supports multiple Caddy instances behind a load balancer. Certificates 
 Internet
    │
    ▼
-Azure LB / AWS ALB
+Your Load Balancer (Azure LB / App Gateway / AWS ALB)
    │
-   ├── OpenEdge node 1 (Caddy + optional CrowdSec)
+   ├── OpenEdge node 1
    ├── OpenEdge node 2
    └── OpenEdge node N
          │
          ▼
-   Shared Redis (certificates + rate limits)
+   Shared Redis (private network)
+   • certificates
+   • rate-limit state
          │
          ▼
    Your origin applications
 ```
 
+All inspection stays inside your account. Redis and CrowdSec remain on private networking.
+
 ## Certificate management
 
-All nodes use the same Redis storage backend. This gives you:
+All nodes use the same Redis storage backend:
 
 - Shared Let's Encrypt certificates (no duplicate issuance)
-- Coordinated ACME challenges and renewals (distributed locks)
-- Automatic failover — any node can serve the certificate
-- Protection against Let's Encrypt rate limits
+- Coordinated ACME challenges and renewals
+- Any healthy node can serve the certificate
+- Reduced risk of hitting Let's Encrypt rate limits
 
-### Recommended: DNS-01 challenges
+**Recommended:** Enable DNS-01 (see [dns-challenge.md](dns-challenge.md)). This removes dependence on the load balancer forwarding port 80 and supports wildcards.
 
-For multi-instance deployments, enable DNS-01 (see [docs/dns-challenge.md](dns-challenge.md)). This avoids depending on the load balancer to forward port 80 for HTTP-01 challenges and supports wildcards.
-
-Supported providers out of the box: Cloudflare, AWS Route 53, Azure DNS.
-
-HTTP-01 still works if the load balancer forwards port 80 to healthy nodes.
+Supported DNS providers: Cloudflare, AWS Route 53, Azure DNS.
 
 ## Rate limiting
 
-Rate limits are distributed and eventually consistent (default 5-second sync). The limit applies across the whole cluster.
+Rate limits are distributed via Redis and apply across the whole cluster (eventually consistent, ~5s sync).
 
-## Environment variables
-
-Set these on every node:
+## Environment (set on every node)
 
 ```
 ACME_EMAIL=admin@example.com
 DOMAIN=example.com
 UPSTREAM=http://your-origin:80
-REDIS_ADDR=your-redis.example.com:6379
-REDIS_PASSWORD=your-redis-password
+REDIS_ADDR=your-redis.private:6379
+REDIS_PASSWORD=strong-password
 CROWDSEC_BOUNCER_KEY=strong-random-key
+CROWDSEC_LAPI_URL=http://central-crowdsec.private:8080   # or local
 ```
 
-Plus the DNS provider variables if using DNS-01.
+## Azure
 
-## Azure example
+1. Create Azure Cache for Redis (or a small Redis VM) in the same VNet.
+2. Deploy 2+ nodes (VMs, Container Apps, or AKS) with Docker and the OpenEdge stack.
+3. Point every node at the shared Redis.
+4. Enable DNS-01 with Azure DNS (recommended).
+5. Place an Azure Load Balancer or Application Gateway in front (80/443 → nodes).
+6. Point the domain at the load balancer.
+7. Health check: port 8080 or TCP 80/443.
 
-1. Create an Azure Cache for Redis (or a small Redis VM) in the same VNet.
-2. Create 2+ Linux VMs (or Container Apps / AKS pods) with Docker.
-3. Deploy OpenEdge on each VM, pointing `REDIS_ADDR` at the shared Redis.
-4. Enable DNS-01 with Azure DNS (recommended) or ensure the load balancer forwards port 80.
-5. Put an Azure Load Balancer or Application Gateway in front, forwarding 80/443 to the VMs.
-6. Point your domain at the load balancer public IP.
-7. Health check: use port 8080 (`/`) or TCP on 80/443.
+## AWS
 
-## AWS example
-
-1. Create an ElastiCache Redis cluster (or a Redis EC2) in the private subnet.
-2. Launch 2+ EC2 instances (or ECS/EKS tasks) with Docker.
-3. Deploy OpenEdge on each, with `REDIS_ADDR` set to the ElastiCache endpoint.
+1. Create ElastiCache Redis (or Redis EC2) in a private subnet.
+2. Launch 2+ nodes (EC2, ECS, or EKS) with the OpenEdge stack.
+3. Point every node at the shared Redis.
 4. Enable DNS-01 with Route 53 (recommended).
-5. Create an Application Load Balancer targeting the instances on 80/443.
+5. Create an Application Load Balancer targeting the nodes on 80/443.
 6. Point the domain at the ALB.
-7. Health check: use the optional port 8080 endpoint or TCP checks.
+7. Health check: port 8080 or TCP checks.
 
 ## Local multi-instance test
 
@@ -83,12 +80,8 @@ Plus the DNS provider variables if using DNS-01.
 docker compose -f docker-compose.multi.yml up -d --build
 ```
 
-## Production checklist
-
-See [production-checklist.md](production-checklist.md) and [security.md](security.md).
-
 ## Notes
 
-- Certificates live in Redis. Losing Redis means nodes will re-issue certificates (watch Let's Encrypt rate limits).
-- CrowdSec can be central (one LAPI) or local on each node.
-- The optional `:8080` endpoint returns `ok` for simple health checks.
+- Certificates live in Redis. Losing Redis causes re-issuance (watch Let's Encrypt rate limits).
+- CrowdSec can be local on each node or central (preferred for consistency).
+- See [production-checklist.md](production-checklist.md) before go-live.
