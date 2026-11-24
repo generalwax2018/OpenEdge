@@ -27,11 +27,12 @@
 	order crowdsec_http before reverse_proxy
 	order rate_limit before reverse_proxy
 
-	# admin off   # uncomment for production
+	# Admin API off by default (least privilege)
+	admin off
 }
 
 {$DOMAIN} {
-	# Explicit modern TLS (Caddy defaults are already good; this makes it clear)
+	# Explicit modern TLS
 	tls {
 		protocols tls1.2 tls1.3
 	}
@@ -79,7 +80,7 @@
 		}
 	}
 
-	# Coraza WAF with body limits (prevents memory exhaustion)
+	# Coraza WAF with body limits
 	coraza_waf {
 		load_owasp_crs
 		directives `
@@ -100,11 +101,14 @@
 	crowdsec
 
 	# Reverse proxy to upstream
+	# Prefer https:// for the origin. Add header_up for origin auth if used.
 	reverse_proxy {$UPSTREAM} {
 		header_up X-Real-IP {remote_host}
 		header_up X-Forwarded-For {remote_host}
 		header_up X-Forwarded-Proto {scheme}
 		header_up X-Forwarded-Host {host}
+		# Optional origin authentication (uncomment and set ORIGIN_SECRET)
+		# header_up X-OpenEdge-Secret {$ORIGIN_SECRET}
 	}
 
 	log {
@@ -116,7 +120,7 @@
 	}
 }
 
-# Health endpoint
+# Health endpoint (private to load balancer)
 :8080 {
 	respond "ok" 200
 }

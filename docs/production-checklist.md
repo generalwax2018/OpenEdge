@@ -2,47 +2,52 @@
 
 Use this before putting OpenEdge in front of real traffic.
 
-## Sovereignty & control
+## Encryption
 
-- [ ] Stack runs entirely in your Azure / AWS / private cloud account
-- [ ] Redis is on a private network only (not publicly reachable)
-- [ ] CrowdSec LAPI is on a private network (or properly firewalled)
-- [ ] Logs are retained in your environment or shipped to your SIEM
-- [ ] Strong, unique values set for `CROWDSEC_BOUNCER_KEY` and `REDIS_PASSWORD`
+- [ ] Client → edge uses TLS 1.2+ (default)
+- [ ] Prefer HTTPS upstream (`https://` origin)
+- [ ] Redis uses a password and is not publicly reachable
+- [ ] Redis TLS enabled if not on a fully isolated network
+- [ ] Logs stored on encrypted volumes or shipped to an encrypted system
 
-## Reverse proxy & HTTPS
+## Zero Trust (edge)
 
-- [ ] `DOMAIN` and `ACME_EMAIL` set correctly
-- [ ] Domain points at the load balancer (or single node)
-- [ ] Ports 80 and 443 open and forwarded
-- [ ] DNS-01 enabled if running multi-instance or using wildcards (recommended)
-- [ ] `admin off` uncommented in the Caddyfile for production
+- [ ] Origins are not directly reachable from the internet
+- [ ] Origin firewall or private networking restricts access to the edge / load balancer only
+- [ ] Optional: origin validates `X-OpenEdge-Secret` (or equivalent)
+- [ ] Redis and CrowdSec LAPI require authentication and stay private
+- [ ] No reliance on "internal network = trusted"
+
+## Least privilege
+
+- [ ] Caddy admin API remains off (default)
+- [ ] Strong unique values for `CROWDSEC_BOUNCER_KEY` and `REDIS_PASSWORD`
+- [ ] DNS provider tokens have minimum required permissions
+- [ ] Containers run non-root with `no-new-privileges` (default)
 
 ## WAF, rate limiting & threat intel
 
 - [ ] WAF starts in DetectionOnly; false positives reviewed before switching to `On`
-- [ ] Rate-limit zones reviewed for your traffic patterns
+- [ ] Rate-limit zones reviewed for your traffic
 - [ ] CrowdSec bouncer key registered and working
-- [ ] Common attack paths are blocked (default Caddyfile does this)
-- [ ] Request body limits appropriate for your upload needs
+- [ ] Request body limits appropriate for your uploads
 
 ## Multi-instance
 
 - [ ] Shared Redis reachable by all nodes on private network
-- [ ] Identical `REDIS_ADDR`, `REDIS_PASSWORD`, and Caddyfile on every node
+- [ ] Identical configuration and secrets on every node
 - [ ] Load balancer health checks configured (port 8080 or TCP 80/443)
-- [ ] DNS-01 preferred over HTTP-01 behind the load balancer
-- [ ] Process documented for adding/removing nodes
+- [ ] DNS-01 preferred for multi-instance
 
 ## Operational
 
-- [ ] Resource limits or autoscaling configured on nodes
+- [ ] Resource limits or autoscaling configured
 - [ ] Monitoring/alerting on node health and 5xx rates
-- [ ] Redis persistence or backup strategy decided (re-issuance works but consumes rate limits)
+- [ ] Redis persistence or backup strategy decided
 - [ ] Update process for the custom Caddy image documented
 
 ## Optional
 
-- [ ] Central CrowdSec LAPI for multi-node consistency
-- [ ] Anubis bot challenge enabled if bot traffic is high
-- [ ] Log shipping to central system
+- [ ] Central CrowdSec LAPI
+- [ ] Anubis bot challenge
+- [ ] Mutual TLS to origin
