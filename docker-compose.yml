@@ -1,0 +1,65 @@
+services:
+  # Custom Caddy with Coraza WAF + CrowdSec bouncer
+  caddy:
+    build:
+      context: ./caddy
+      dockerfile: Dockerfile
+    container_name: openedge-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      - ACME_EMAIL=${ACME_EMAIL:-admin@example.com}
+      - CROWDSEC_BOUNCER_KEY=${CROWDSEC_BOUNCER_KEY:-changeme}
+      - DOMAIN=${DOMAIN:-localhost}
+      - UPSTREAM=${UPSTREAM:-http://whoami:80}
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+      - caddy_logs:/var/log/caddy
+    networks:
+      - openedge
+    depends_on:
+      - whoami
+      - crowdsec
+    security_opt:
+      - no-new-privileges:true
+
+  # Collaborative threat intelligence
+  crowdsec:
+    image: crowdsecurity/crowdsec:latest
+    container_name: openedge-crowdsec
+    restart: unless-stopped
+    environment:
+      - GID=1000
+      - COLLECTIONS=crowdsecurity/caddy crowdsecurity/http-cve crowdsecurity/whitelist-good-actors
+      - BOUNCER_KEY_caddy=${CROWDSEC_BOUNCER_KEY:-changeme}
+    volumes:
+      - crowdsec_db:/var/lib/crowdsec/data
+      - ./crowdsec/acquis.yaml:/etc/crowdsec/acquis.yaml:ro
+      - caddy_logs:/var/log/caddy:ro
+    networks:
+      - openedge
+    security_opt:
+      - no-new-privileges:true
+
+  # Sample backend (replace with your real apps)
+  whoami:
+    image: traefik/whoami:latest
+    container_name: openedge-whoami
+    restart: unless-stopped
+    networks:
+      - openedge
+
+volumes:
+  caddy_data:
+  caddy_config:
+  caddy_logs:
+  crowdsec_db:
+
+networks:
+  openedge:
+    driver: bridge

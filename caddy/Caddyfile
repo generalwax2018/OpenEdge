@@ -1,0 +1,74 @@
+# OpenEdge Caddyfile
+# Global options
+{
+	email {$ACME_EMAIL}
+	# admin off   # uncomment for production if you don't need the admin API
+
+	# CrowdSec bouncer
+	crowdsec {
+		api_url http://crowdsec:8080
+		api_key {$CROWDSEC_BOUNCER_KEY}
+		ticker_interval 15s
+	}
+
+	# Order matters: WAF and bouncer early
+	order coraza_waf first
+	order crowdsec_http before reverse_proxy
+}
+
+# Default site (replace {$DOMAIN} or hardcode your domain)
+{$DOMAIN} {
+	# Security headers (Cloudflare-like)
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		Permissions-Policy "geolocation=(), microphone=(), camera=()"
+		-Server
+	}
+
+	# Basic rate limiting (tune for your traffic)
+	# rate_limit {
+	# 	zone static {
+	# 		key {remote_host}
+	# 		events 100
+	# 		window 1m
+	# 	}
+	# }
+
+	# Coraza WAF with OWASP CRS
+	# Start in DetectionOnly, switch to On after tuning
+	coraza_waf {
+		load_owasp_crs
+		directives `
+			Include @coraza.conf-recommended
+			Include @crs-setup.conf.example
+			Include @owasp_crs/*.conf
+			SecRuleEngine DetectionOnly
+			# SecRuleEngine On
+		`
+	}
+
+	# CrowdSec IP blocking
+	crowdsec
+
+	# Reverse proxy to upstream
+	reverse_proxy {$UPSTREAM} {
+		# Preserve client IP
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+
+	# Access logging (CrowdSec reads these)
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 100mb
+			roll_keep 5
+		}
+		format json
+	}
+}
+
+# Optional: redirect HTTP to HTTPS is handled automatically by Caddy

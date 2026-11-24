@@ -1,0 +1,11 @@
+# CrowdSec acquisition config for Caddy logs
+filenames:
+  - /var/log/caddy/access.log
+labels:
+  type: caddy
+---
+# Optional: also watch system logs if needed
+# filenames:
+#   - /var/log/auth.log
+# labels:
+#   type: syslog
