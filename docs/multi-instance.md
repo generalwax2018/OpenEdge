@@ -1,6 +1,6 @@
 # Multi-Instance Deployment (Azure / AWS)
 
-OpenEdge supports multiple Caddy instances behind a load balancer. Rate-limit state is shared via Redis so limits apply across the whole cluster.
+OpenEdge supports multiple Caddy instances behind a load balancer. Certificates and rate-limit state are shared via Redis.
 
 ## Architecture
 
@@ -15,18 +15,32 @@ Azure LB / AWS ALB
    └── OpenEdge node N
          │
          ▼
-   Shared Redis (Azure Cache / ElastiCache / dedicated VM)
+   Shared Redis (certificates + rate limits)
          │
          ▼
    Your origin applications
 ```
 
-## Requirements
+## Certificate management
 
-- Shared Redis reachable by all nodes (private network)
-- Same `Caddyfile` and environment variables on every node
-- Load balancer health checks on port 80 or 443
-- Optional: one CrowdSec instance or CrowdSec on each node (they can share decisions via the LAPI if desired)
+All nodes use the same Redis storage backend. This gives you:
+
+- Shared Let's Encrypt certificates (no duplicate issuance)
+- Coordinated ACME challenges and renewals (distributed locks)
+- Automatic failover — any node can serve the certificate
+- Protection against Let's Encrypt rate limits
+
+**Requirements for shared certificates:**
+
+1. Every node has the same `REDIS_ADDR` and `REDIS_PASSWORD`.
+2. The load balancer forwards port 80 (HTTP-01 challenge) to the nodes, **or** you switch to DNS-01 challenges.
+3. All nodes use the same `ACME_EMAIL` and domain configuration.
+
+HTTP-01 works out of the box as long as the load balancer can reach any healthy node on port 80. DNS-01 is more reliable if you want to avoid depending on the load balancer for challenges.
+
+## Rate limiting
+
+Rate limits are distributed and eventually consistent (default 5-second sync). The limit applies across the whole cluster.
 
 ## Environment variables
 
@@ -37,6 +51,7 @@ ACME_EMAIL=admin@example.com
 DOMAIN=example.com
 UPSTREAM=http://your-origin:80
 REDIS_ADDR=your-redis.example.com:6379
+REDIS_PASSWORD=your-redis-password
 CROWDSEC_BOUNCER_KEY=strong-random-key
 ```
 
@@ -47,6 +62,7 @@ CROWDSEC_BOUNCER_KEY=strong-random-key
 3. Deploy OpenEdge on each VM, pointing `REDIS_ADDR` at the shared Redis.
 4. Put an Azure Load Balancer or Application Gateway in front, forwarding 80/443 to the VMs.
 5. Point your domain at the load balancer public IP.
+6. Health check: use port 8080 (`/`) or TCP on 80/443.
 
 ## AWS example
 
@@ -55,6 +71,7 @@ CROWDSEC_BOUNCER_KEY=strong-random-key
 3. Deploy OpenEdge on each, with `REDIS_ADDR` set to the ElastiCache endpoint.
 4. Create an Application Load Balancer targeting the instances on 80/443.
 5. Point the domain at the ALB.
+6. Health check: use the optional port 8080 endpoint or TCP checks.
 
 ## Local multi-instance test
 
@@ -62,11 +79,21 @@ CROWDSEC_BOUNCER_KEY=strong-random-key
 docker compose -f docker-compose.multi.yml up -d --build
 ```
 
-This starts two Caddy instances sharing one Redis. Useful for testing distributed rate limits.
+## Production checklist
+
+- [ ] Shared Redis with password and private networking only
+- [ ] All nodes use the same `REDIS_ADDR` and `REDIS_PASSWORD`
+- [ ] Load balancer forwards port 80 and 443
+- [ ] Strong `CROWDSEC_BOUNCER_KEY`
+- [ ] WAF starts in DetectionOnly; switch to On after tuning
+- [ ] Redis is not publicly exposed
+- [ ] Regular backups of Redis (or accept re-issuance on loss)
+- [ ] Health checks configured on the load balancer
+- [ ] Logging aggregated (or at least retained on each node)
+- [ ] CrowdSec either central or running on each node
 
 ## Notes
 
-- Rate limits are eventually consistent (default sync every 5 seconds).
-- Certificates: each node can obtain its own Let’s Encrypt cert, or you can use a shared storage volume / certificate management.
-- CrowdSec: you can run one central CrowdSec and point all bouncers at it, or run CrowdSec on each node.
-- For production, do not expose Redis to the public internet.
+- Certificates live in Redis. Losing Redis means nodes will re-issue certificates (watch Let's Encrypt rate limits).
+- CrowdSec can be central (one LAPI) or local on each node.
+- The optional `:8080` endpoint returns `ok` for simple health checks.

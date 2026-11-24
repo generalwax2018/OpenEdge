@@ -1,13 +1,16 @@
 # OpenEdge Caddyfile — multi-instance ready
-# Global options
+# Shared Redis storage handles both certificates and rate-limit state
 {
 	email {$ACME_EMAIL}
 
-	# Shared storage for distributed rate limiting (Redis)
-	# Set REDIS_ADDR in environment (e.g. redis:6379 or redis.example.com:6379)
+	# Shared storage (certificates + rate-limit state)
+	# All nodes must point at the same Redis
 	storage redis {
 		address {$REDIS_ADDR:redis:6379}
+		password {$REDIS_PASSWORD:}
 		db 0
+		key_prefix caddy
+		timeout 5
 	}
 
 	# CrowdSec bouncer
@@ -35,8 +38,7 @@
 		-Server
 	}
 
-	# Distributed rate limiting (shared across all instances via Redis)
-	# Default: 100 requests / minute per IP across the whole cluster
+	# Distributed rate limiting (shared via Redis)
 	rate_limit {
 		distributed {
 			read_interval 5s
@@ -79,4 +81,9 @@
 		}
 		format json
 	}
+}
+
+# Optional health endpoint for load balancer checks
+:8080 {
+	respond "ok" 200
 }
